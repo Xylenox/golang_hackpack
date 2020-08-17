@@ -1,78 +1,92 @@
-type Edge struct {
-	v1, v2, cap, flow int
-	rev               *Edge
-}
 
 type Dinic struct {
-	adj     [][]*Edge
-	n, s, t int
-	dist, q []int
-	blocked []bool
+	lvl, ptr, q []int
+	adj         [][]*Edge
 }
 
-func NewDinic(n int) *Dinic {
-	res := &Dinic{make([][]*Edge, n+2), n, n, n + 1,
-		make([]int, n+2), []int{}, make([]bool, n+2)}
-	for i := range res.adj {
-		res.adj[i] = []*Edge{}
+type Edge struct {
+	to, rev int
+	c, oc   int64
+}
+
+func (d *Dinic) addEdge(a, b int, c int64) {
+	d.adj[a] = append(d.adj[a], &Edge{b, len(d.adj[b]), c, c})
+	d.adj[b] = append(d.adj[b], &Edge{a, len(d.adj[a]) - 1, 0, 0})
+}
+
+func (d *Dinic) dfs(v, t int, f int64) int64 {
+	if v == t || f == 0 {
+		return f
 	}
-	return res
-}
 
-func (d *Dinic) Add(u, v, c int) {
-	a, b := &Edge{u, v, c, 0, nil}, &Edge{v, u, 0, 0, nil}
-	a.rev, b.rev = b, a
-	d.adj[u] = append(d.adj[u], a)
-	d.adj[v] = append(d.adj[v], b)
-}
-
-func (d *Dinic) Bfs() bool {
-	d.q = d.q[:0]
-	Fill(d.dist, -1)
-	d.dist[d.t] = 0
-	d.q = append(d.q, d.t)
-
-	for len(d.q) > 0 {
-		curr := d.q[0]
-		d.q = d.q[1:]
-		if curr == d.s {
-			return true
-		}
-		for _, e := range d.adj[curr] {
-			if e.rev.cap > e.rev.flow && d.dist[e.v2] == -1 {
-				d.dist[e.v2] = d.dist[curr] + 1
-				d.q = append(d.q, e.v2)
+	for i := d.ptr[v]; i < len(d.adj[v]); i++ {
+		e := d.adj[v][i]
+		if d.lvl[e.to] == d.lvl[v]+1 {
+			p := d.dfs(e.to, t, Min(f, e.c))
+			if p != 0 {
+				e.c -= p
+				d.adj[e.to][e.rev].c += p
+				return p
 			}
 		}
 	}
-	return d.dist[d.s] != -1
+	return 0
 }
 
-func (d *Dinic) Dfs(ind, min int) int {
-	if ind == d.t {
-		return min
-	}
-	flow := 0
-	for _, e := range d.adj[ind] {
-		if !d.blocked[e.v2] && d.dist[e.v2] == d.dist[ind]-1 && e.cap > e.flow {
-			cur := d.Dfs(e.v2, Min(min-flow, e.cap-e.flow))
-			e.flow += cur
-			e.rev.flow = -e.flow
-			flow += cur
+func (d *Dinic) calc(s, t int) int64 {
+	var flow int64 = 0
+	d.q[0] = s
+	for L := 0; L < 31; L++ {
+		for {
+			d.ptr = make([]int, len(d.q))
+			d.lvl = make([]int, len(d.q))
+			qi, qe := 0, 1
+			d.lvl[s] = 1
+			for qi < qe && d.lvl[t] == 0 {
+				v := d.q[qi]
+				qi++
+				for _, e := range d.adj[v] {
+					if d.lvl[e.to] == 0 && e.c>>(30-L) != 0 {
+						d.q[qe] = e.to
+						d.lvl[e.to] = d.lvl[v] + 1
+						qe++
+					}
+				}
+			}
+			for {
+				p := d.dfs(s, t, 1<<63-1)
+				if p == 0 {
+					break
+				}
+				flow += p
+			}
+			if d.lvl[t] == 0 {
+				break
+			}
 		}
-		if flow == min {
-			return flow
-		}
 	}
-	d.blocked[ind] = flow != min
 	return flow
 }
 
-func (d *Dinic) Flow() int {
-	res := 0
-	for d.Bfs() {
-		FillB(d.blocked, false)
-		res += d.Dfs(d.s, oo)
+func solve() {
+	n, m := nextInt(), nextInt()
+	tot := 0
+	flow := &Dinic{make([]int, 2*n+2), make([]int, 2*n+2), make([]int, 2*n+2), make([][]*Edge, 2*n+2)}
+	a, b := make([]int, n), make([]int, n)
+	for i := range a {
+		a[i], b[i] = nextInt(), nextInt()
+		s := (nextInt() + m - 1) / m
+		tot += s
+		flow.addEdge(2*n, i, int64(s))
+		flow.addEdge(i+n, 2*n+1, int64(s))
 	}
-	return res
+	for i := range a {
+		for j := range a {
+			c := nextInt()
+			if b[i]+c < a[j] {
+				flow.addEdge(i, j+n, 1<<30)
+			}
+		}
+	}
+	printf("%d\n", int64(tot)-flow.calc(2*n, 2*n+1))
 }
